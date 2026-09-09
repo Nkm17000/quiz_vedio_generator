@@ -1,6 +1,5 @@
 fastapi
-imgkit
-moviepy==1.0.3
+pillow
 python-dotenv
 requests
 edge-tts

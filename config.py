@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 
-import imgkit
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,18 +20,10 @@ OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_VIDEO = OUTPUT_DIR / "quiz_video.mp4"
 TEMP_DIR = OUTPUT_DIR / "temp"
 
-# Rendering
-WKHTML_PATH = os.getenv("WKHTMLTOIMAGE_PATH", "/usr/bin/wkhtmltoimage")
-try:
-    IMGKIT_CONFIG = imgkit.config(wkhtmltoimage=WKHTML_PATH)
-except Exception:
-    IMGKIT_CONFIG = None
-
-# Voice: Indian English only.
-# Female: en-IN-NeerjaNeural
-# Male:   en-IN-PrabhatNeural
+# Natural Indian-English neural voice.
+# Female: en-IN-NeerjaNeural | Male: en-IN-PrabhatNeural
 TTS_VOICE = os.getenv("TTS_VOICE", "en-IN-NeerjaNeural")
-TTS_RATE = os.getenv("TTS_RATE", "+10%")
+TTS_RATE = os.getenv("TTS_RATE", "+0%")
 TTS_VOLUME = os.getenv("TTS_VOLUME", "+0%")
 
 # Facebook

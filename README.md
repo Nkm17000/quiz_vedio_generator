@@ -1,40 +1,28 @@
 # Quiz Video Generator
 
-Generates vertical quiz videos with:
-- 3-second countdown slides
-- English + Hindi question/options on screen
-- Indian-English natural neural question narration
-- Question narration only (no options)
-- Voice forced to finish within each 3-second question slide
-- Background music, countdown tick and answer sound
-- Optional Facebook upload
+Generates vertical quiz videos with a 3-second countdown, English + Hindi text, natural Indian-English question narration, background music, countdown ticks, answer sound, and optional Facebook upload.
 
-## Indian voice
+## Voice behavior
 
-Default female voice:
-`en-IN-NeerjaNeural`
+- Default voice: `en-IN-NeerjaNeural` (Indian English female)
+- Male option: `en-IN-PrabhatNeural`
+- Only the English question is narrated.
+- Each question is narrated exactly once, at the start of its first countdown slide.
+- The narration keeps a natural speaking speed. It is **not** squeezed into one second and is not artificially accelerated to fit a slide.
+- `TTS_RATE=+0%` is the default natural rate.
 
-Male alternative:
-`en-IN-PrabhatNeural`
+## Performance
 
-Set `TTS_VOICE` in `.env` to switch.
+The video pipeline uses Pillow for local slide rendering and FFmpeg directly for slideshow encoding and audio mixing. This removes the wkhtmltoimage/imgkit rendering dependency and avoids MoviePy's frame-by-frame encoding overhead.
 
-## Run
+GitHub Actions caches both pip downloads and the complete Python virtual environment. Dependencies are installed only when `requirements.txt` changes or the cache is unavailable.
+
+## Run locally
 
 ```bash
-pip install -r requirements.txt
-python app.py
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python app.py
 ```
 
-The TTS service needs internet access because it uses Edge TTS.
-
-## Video flow
-
-For every question:
-
-1. 3-second countdown slide — question is spoken
-2. 3-second countdown slide — question is spoken
-3. 3-second countdown slide — question is spoken
-4. Answer slide — no question narration
-
-The narration contains only the English question. Options and Hindi text are never sent to TTS.
+FFmpeg must be available on the system.

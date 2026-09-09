@@ -1,136 +1,174 @@
 import base64
+import subprocess
 from pathlib import Path
 
-import imgkit
-from moviepy.editor import (
-    AudioFileClip,
-    CompositeAudioClip,
-    ImageClip,
-    concatenate_videoclips,
-)
-from moviepy.audio.fx.all import audio_loop
-
-from config import (
-    ASSETS_DIR,
-    FPS,
-    IMGKIT_CONFIG,
-    SLIDE_DURATION,
-    TEMP_DIR,
-    VIDEO_HEIGHT,
-    VIDEO_WIDTH,
-)
-from services.answer_html import answer_html
-from services.html_generator import create_html
+from config import ASSETS_DIR, FPS, SLIDE_DURATION, TEMP_DIR, VIDEO_HEIGHT, VIDEO_WIDTH
+from services.slide_renderer import render_answer, render_question
 from services.tts_service import generate_question_speech
 
 
-def _render_html(html, filename):
-    imgkit.from_string(
-        html,
-        str(filename),
-        config=IMGKIT_CONFIG,
-        options={
-            "width": VIDEO_WIDTH,
-            "height": VIDEO_HEIGHT,
-            "enable-local-file-access": "",
-        },
-    )
-
-
 def generate_assets(quiz):
-    """Render countdown/answer slides and generate question voice tracks."""
+    """Render all slides and create one natural voice track per question."""
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
     images = []
 
     for index, question in enumerate(quiz):
         for timer in range(SLIDE_DURATION, 0, -1):
-            image = TEMP_DIR / f"slide_{index}_{timer}.png"
-            _render_html(create_html(question, index, timer), image)
+            image = TEMP_DIR / f"slide_{index}_{timer}.jpg"
+            render_question(question, index, timer, image)
             images.append(str(image))
 
-        answer_image = TEMP_DIR / f"answer_{index}.png"
-        _render_html(answer_html(question, index), answer_image)
+        answer_image = TEMP_DIR / f"answer_{index}.jpg"
+        render_answer(question, index, answer_image)
         images.append(str(answer_image))
 
     speech_files = generate_question_speech(quiz)
     return images, speech_files
 
 
-def _add_audio(video, images, speech_files):
-    audio_tracks = []
+def _run(command):
+    subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    bg_music = ASSETS_DIR / "bg_music.mp3"
+
+def _write_concat_file(images):
+    concat_file = TEMP_DIR / "slides.txt"
+    with concat_file.open("w", encoding="utf-8") as file:
+        for image in images:
+            file.write(f"file '{Path(image).resolve()}'\n")
+            file.write(f"duration {SLIDE_DURATION}\n")
+        # concat demuxer needs the final file repeated after a duration entry.
+        file.write(f"file '{Path(images[-1]).resolve()}'\n")
+    return concat_file
+
+
+def _build_audio(images, speech_files, output_audio):
+    """Build one mixed audio track with FFmpeg.
+
+    Question narration is inserted exactly once, at the first countdown slide.
+    TTS is deliberately left at its natural duration/rate; it is never squeezed
+    into one second or artificially accelerated to match a slide.
+    """
+    bg = ASSETS_DIR / "bg_music.mp3"
     tick = ASSETS_DIR / "tick.mp3"
     correct = ASSETS_DIR / "correct.mp3"
 
-    if bg_music.exists():
-        bg = AudioFileClip(str(bg_music))
-        audio_tracks.append(audio_loop(bg, duration=video.duration).volumex(0.15))
+    inputs = []
+    if bg.exists():
+        inputs += ["-stream_loop", "-1", "-i", str(bg)]
+    else:
+        inputs += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
 
-    current_time = 0
-    for image in images:
-        if Path(image).name.startswith("slide_") and tick.exists():
-            tick_clip = AudioFileClip(str(tick)).set_start(current_time).volumex(0.45)
-            audio_tracks.append(tick_clip)
-        current_time += SLIDE_DURATION
+    tick_index = None
+    if tick.exists():
+        tick_index = len([x for x in inputs if x == "-i"])
+        inputs += ["-i", str(tick)]
 
-    # Speak each question exactly once, at the start of its first countdown slide.
-    # A question owns three countdown slides, but its voice track must not repeat.
-    current_time = 0
+    correct_index = None
+    if correct.exists():
+        correct_index = len([x for x in inputs if x == "-i"])
+        inputs += ["-i", str(correct)]
+
+    speech_indices = {}
+    for q_index, speech in enumerate(speech_files):
+        if speech:
+            speech_indices[q_index] = len([x for x in inputs if x == "-i"])
+            inputs += ["-i", str(speech)]
+
+    total_duration = len(images) * SLIDE_DURATION
+    filters = []
+    mix_labels = []
+
+    # Background music at low volume.
+    filters.append("[0:a]volume=0.15[bg]")
+    mix_labels.append("[bg]")
+
+    slide_starts = []
+    question_starts = []
+    answer_starts = []
+    elapsed = 0
     question_index = 0
     for image in images:
-        filename = Path(image).name
-        if filename.startswith("slide_") and filename.endswith(f"_{SLIDE_DURATION}.png"):
-            speech = speech_files[question_index] if question_index < len(speech_files) else None
-            if speech:
-                voice = AudioFileClip(speech).set_start(current_time).volumex(1.0)
-                audio_tracks.append(voice)
-            question_index += 1
-        current_time += SLIDE_DURATION
+        name = Path(image).name
+        if name.startswith("slide_"):
+            slide_starts.append(elapsed)
+            if name.endswith(f"_{SLIDE_DURATION}.jpg"):
+                question_starts.append((question_index, elapsed))
+                question_index += 1
+        elif name.startswith("answer_"):
+            answer_starts.append(elapsed)
+        elapsed += SLIDE_DURATION
 
-    current_time = 0
-    if correct.exists():
-        for image in images:
-            if Path(image).name.startswith("answer_"):
-                answer = AudioFileClip(str(correct)).set_start(current_time).volumex(0.8)
-                audio_tracks.append(answer)
-            current_time += SLIDE_DURATION
+    # Split the reusable tick and correct sounds once, then delay each copy.
+    if tick_index is not None and slide_starts:
+        labels = [f"[tick{i}]" for i in range(len(slide_starts))]
+        filters.append(f"[{tick_index}:a]asplit={len(labels)}" + "".join(labels))
+        for i, start in enumerate(slide_starts):
+            filters.append(f"[tick{i}]adelay={start * 1000}:all=1,volume=0.45[td{i}]")
+            mix_labels.append(f"[td{i}]")
 
-    if not audio_tracks:
-        return video
+    if correct_index is not None and answer_starts:
+        labels = [f"[correct{i}]" for i in range(len(answer_starts))]
+        filters.append(f"[{correct_index}:a]asplit={len(labels)}" + "".join(labels))
+        for i, start in enumerate(answer_starts):
+            filters.append(f"[correct{i}]adelay={start * 1000}:all=1,volume=0.8[cd{i}]")
+            mix_labels.append(f"[cd{i}]")
 
-    return video.set_audio(
-        CompositeAudioClip(audio_tracks).set_duration(video.duration)
+    for q_index, start in question_starts:
+        if q_index not in speech_indices:
+            continue
+        input_index = speech_indices[q_index]
+        filters.append(f"[{input_index}:a]adelay={start * 1000}:all=1,volume=1.0[voice{q_index}]")
+        mix_labels.append(f"[voice{q_index}]")
+
+    filters.append(
+        f"{''.join(mix_labels)}amix=inputs={len(mix_labels)}:duration=longest:dropout_transition=0:normalize=0," 
+        f"atrim=duration={total_duration},asetpts=N/SR/TB[aout]"
     )
+
+    command = ["ffmpeg", "-y", *inputs, "-filter_complex", ";".join(filters), "-map", "[aout]", "-c:a", "aac", "-b:a", "128k", str(output_audio)]
+    _run(command)
 
 
 def create_video(images, speech_files, output_file):
-    """Create the final vertical quiz video."""
+    """Create the vertical quiz video using FFmpeg for faster encoding."""
     if not images:
         raise ValueError("No images were generated.")
 
-    clips = [ImageClip(image).set_duration(SLIDE_DURATION) for image in images]
-    video = concatenate_videoclips(clips)
+    output_file = Path(output_file)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    concat_file = _write_concat_file(images)
+    audio_file = TEMP_DIR / "quiz_audio.m4a"
+    silent_video = TEMP_DIR / "quiz_video_silent.mp4"
 
-    try:
-        video = _add_audio(video, images, speech_files)
-        Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+    _build_audio(images, speech_files, audio_file)
 
-        video.write_videofile(
-            str(output_file),
-            fps=FPS,
-            codec="libx264",
-            audio_codec="aac",
-            threads=2,
-            logger="bar",
-        )
-    finally:
-        video.close()
-        for clip in clips:
-            clip.close()
+    # FFmpeg is considerably faster than MoviePy for a slideshow of static images.
+    _run([
+        "ffmpeg", "-y",
+        "-f", "concat", "-safe", "0", "-i", str(concat_file),
+        "-vf", f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:force_original_aspect_ratio=decrease,pad={VIDEO_WIDTH}:{VIDEO_HEIGHT}:(ow-iw)/2:(oh-ih)/2,fps={FPS},format=yuv420p",
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-tune", "stillimage",
+        "-crf", "28",
+        "-movflags", "+faststart",
+        str(silent_video),
+    ])
+
+    _run([
+        "ffmpeg", "-y",
+        "-i", str(silent_video),
+        "-i", str(audio_file),
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-shortest",
+        str(output_file),
+    ])
 
 
 def get_logo_base64():
+    """Backward-compatible helper for older imports."""
     logo = ASSETS_DIR / "logo.png"
     with logo.open("rb") as file:
         return base64.b64encode(file.read()).decode("utf-8")
