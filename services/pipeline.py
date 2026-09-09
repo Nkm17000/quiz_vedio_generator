@@ -1,4 +1,4 @@
-from config import OUTPUT_DIR, OUTPUT_VIDEO
+from config import OUTPUT_DIR, OUTPUT_VIDEO, PAGE_URL
 from services.facebook_service import upload_video_to_facebook
 from services.quiz_service import fetch_quiz
 from services.video_service import create_video, generate_assets
@@ -9,6 +9,7 @@ CAPTION = (
     "📚 Daily practice for serious aspirants\n\n"
     "🎯 SSC | UPSC | Banking | Railway | RAS | IAS\n\n"
     "💬 Drop your answer below\n\n"
+    f"🌐 Practice more: {PAGE_URL or 'https://smartlearninglab-react.pages.dev'}\n\n"
     "#sscpreparation #upsc #bankexam #railwayexam "
     "#mocktest #aptitude #reasoning #govtjobs #studyreels"
 )

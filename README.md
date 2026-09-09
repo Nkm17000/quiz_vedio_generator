@@ -38,3 +38,12 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python app.py
 ```
+
+## Branding and final CTA
+
+- The source logo is cropped and fitted proportionally into a true circular badge; it is never stretched from its original aspect ratio.
+- Every answer slide ends with the centered attribution `By Nitin Mittal Innovations`.
+- Every generated video ends with a dedicated 5-second Smart Learning Lab CTA slide containing the page URL.
+- Configure the page with `PAGE_URL` in `.env` or as the GitHub Actions secret `PAGE_URL`.
+- If `PAGE_URL` is missing or empty, the built-in default is `https://smartlearninglab-react.pages.dev`.
+- The same URL is also included in the Facebook post caption.

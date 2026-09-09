@@ -4,8 +4,8 @@ from pathlib import Path
 
 import imageio_ffmpeg
 
-from config import ASSETS_DIR, FPS, SLIDE_DURATION, TEMP_DIR, VIDEO_HEIGHT, VIDEO_WIDTH
-from services.slide_renderer import render_answer, render_question
+from config import ASSETS_DIR, FINAL_SLIDE_DURATION, FPS, SLIDE_DURATION, TEMP_DIR, VIDEO_HEIGHT, VIDEO_WIDTH
+from services.slide_renderer import render_answer, render_final_cta, render_question
 from services.tts_service import generate_question_speech
 
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
@@ -26,6 +26,11 @@ def generate_assets(quiz):
         render_answer(question, index, answer_image)
         images.append(str(answer_image))
 
+    # Finish every video with a branded Smart Learning Lab CTA.
+    final_image = TEMP_DIR / "final_cta.jpg"
+    render_final_cta(final_image)
+    images.append(str(final_image))
+
     speech_files = generate_question_speech(quiz)
     return images, speech_files
 
@@ -34,12 +39,16 @@ def _run(command):
     subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
 
 
+def _image_duration(image):
+    return FINAL_SLIDE_DURATION if Path(image).name == "final_cta.jpg" else SLIDE_DURATION
+
+
 def _write_concat_file(images):
     concat_file = TEMP_DIR / "slides.txt"
     with concat_file.open("w", encoding="utf-8") as file:
         for image in images:
             file.write(f"file '{Path(image).resolve()}'\n")
-            file.write(f"duration {SLIDE_DURATION}\n")
+            file.write(f"duration {_image_duration(image)}\n")
         # concat demuxer needs the final file repeated after a duration entry.
         file.write(f"file '{Path(images[-1]).resolve()}'\n")
     return concat_file
@@ -78,7 +87,7 @@ def _build_audio(images, speech_files, output_audio):
             speech_indices[q_index] = len([x for x in inputs if x == "-i"])
             inputs += ["-i", str(speech)]
 
-    total_duration = len(images) * SLIDE_DURATION
+    total_duration = sum(_image_duration(image) for image in images)
     filters = []
     mix_labels = []
 
@@ -100,7 +109,7 @@ def _build_audio(images, speech_files, output_audio):
                 question_index += 1
         elif name.startswith("answer_"):
             answer_starts.append(elapsed)
-        elapsed += SLIDE_DURATION
+        elapsed += _image_duration(image)
 
     # Split the reusable tick and correct sounds once, then delay each copy.
     if tick_index is not None and slide_starts:

@@ -11,6 +11,7 @@ BASE_DIR = Path(__file__).resolve().parent
 VIDEO_WIDTH = 1080
 VIDEO_HEIGHT = 1920
 SLIDE_DURATION = 3
+FINAL_SLIDE_DURATION = 5
 FPS = 24
 
 # Paths
@@ -29,3 +30,6 @@ TTS_VOLUME = os.getenv("TTS_VOLUME", "+0%")
 # Facebook
 FACEBOOK_PAGE_ID = os.getenv("FACEBOOK_PAGE_ID")
 FACEBOOK_ACCESS_TOKEN = os.getenv("FACEBOOK_ACCESS_TOKEN")
+
+# Smart Learning Lab website/page shown on the final CTA slide.
+PAGE_URL = os.getenv("PAGE_URL", "https://smartlearninglab-react.pages.dev").strip()
