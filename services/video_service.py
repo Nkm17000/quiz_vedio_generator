@@ -1,215 +1,137 @@
-import os
-import imgkit
 import base64
+from pathlib import Path
+
+import imgkit
 from moviepy.editor import (
+    AudioFileClip,
+    CompositeAudioClip,
     ImageClip,
     concatenate_videoclips,
-    AudioFileClip,
-    CompositeAudioClip
 )
-from moviepy.audio.fx.all import audio_loop   # 🔥 add at top
-from config import IMGKIT_CONFIG, VIDEO_WIDTH, VIDEO_HEIGHT, DURATION
+from moviepy.audio.fx.all import audio_loop
+
+from config import (
+    ASSETS_DIR,
+    FPS,
+    IMGKIT_CONFIG,
+    SLIDE_DURATION,
+    TEMP_DIR,
+    VIDEO_HEIGHT,
+    VIDEO_WIDTH,
+)
+from services.answer_html import answer_html
+from services.html_generator import create_html
+from services.tts_service import generate_question_speech
 
 
-# =========================
-# GENERATE IMAGES (WITH COUNTDOWN)
-# =========================
-def generate_images(quiz):
-    from utils.html_generator import create_html
-    from services.video_service import answer_html
+def _render_html(html, filename):
+    imgkit.from_string(
+        html,
+        str(filename),
+        config=IMGKIT_CONFIG,
+        options={
+            "width": VIDEO_WIDTH,
+            "height": VIDEO_HEIGHT,
+            "enable-local-file-access": "",
+        },
+    )
 
+
+def generate_assets(quiz):
+    """Render countdown/answer slides and generate question voice tracks."""
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
     images = []
 
-    for i, q in enumerate(quiz):
+    for index, question in enumerate(quiz):
+        for timer in range(SLIDE_DURATION, 0, -1):
+            image = TEMP_DIR / f"slide_{index}_{timer}.png"
+            _render_html(create_html(question, index, timer), image)
+            images.append(str(image))
 
-        # 🔥 COUNTDOWN 5 → 1
-        for t in range(3, 0, -1):
-            html = create_html(q, i, timer=t)
-            file = f"slide_{i}_{t}.png"
+        answer_image = TEMP_DIR / f"answer_{index}.png"
+        _render_html(answer_html(question, index), answer_image)
+        images.append(str(answer_image))
 
-            imgkit.from_string(
-                html,
-                file,
-                config=IMGKIT_CONFIG,
-                options={
-                    "width": VIDEO_WIDTH,
-                    "height": VIDEO_HEIGHT,
-                    "enable-local-file-access": ""
-                }
-            )
-
-            images.append(file)
-
-        # ✅ ANSWER SLIDE
-        correct = q["options"][q["answer_index"]]
-
-        ans_html = answer_html(
-            i + 1,
-            correct,
-            q["answer_index"],
-            q["options"]
-        )
-
-        ans_file = f"answer_{i}.png"
-
-        imgkit.from_string(
-            ans_html,
-            ans_file,
-            config=IMGKIT_CONFIG,
-            options={
-                "width": VIDEO_WIDTH,
-                "height": VIDEO_HEIGHT
-            }
-        )
-
-        images.append(ans_file)
-
-    return images
+    speech_files = generate_question_speech(quiz)
+    return images, speech_files
 
 
-# =========================
-# ANSWER HTML
-# =========================
-def answer_html(page, correct, correct_index, options):
-    highlighted = []
+def _add_audio(video, images, speech_files):
+    audio_tracks = []
 
-    for i, opt in enumerate(options):
-        if i == correct_index:
-            highlighted.append(
-                f"<div class='option correct'>✔ {opt}</div>"
-            )
-        else:
-            highlighted.append(
-                f"<div class='option'>{opt}</div>"
-            )
+    bg_music = ASSETS_DIR / "bg_music.mp3"
+    tick = ASSETS_DIR / "tick.mp3"
+    correct = ASSETS_DIR / "correct.mp3"
 
-    options_html = "".join(highlighted)
+    if bg_music.exists():
+        bg = AudioFileClip(str(bg_music))
+        audio_tracks.append(audio_loop(bg, duration=video.duration).volumex(0.15))
 
-    return f"""
-    <html>
-    <head>
-    <style>
-        body {{
-            margin: 0;
-            font-family: Arial;
-            height: 100vh;
-            background: linear-gradient(180deg, #020d18, #0a2a43);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            color: white;
-        }}
+    current_time = 0
+    for image in images:
+        if Path(image).name.startswith("slide_") and tick.exists():
+            tick_clip = AudioFileClip(str(tick)).set_start(current_time).volumex(0.45)
+            audio_tracks.append(tick_clip)
+        current_time += SLIDE_DURATION
 
-        .container {{
-            width: 90%;
-            text-align: center;
-        }}
+    # One question voice track is reused for all three countdown slides.
+    current_time = 0
+    question_index = 0
+    for image in images:
+        if Path(image).name.startswith("slide_"):
+            speech = speech_files[question_index]
+            if speech:
+                voice = AudioFileClip(speech).set_start(current_time).volumex(1.0)
+                audio_tracks.append(voice)
 
-        .title {{
-            font-size: 50px;
-            margin-bottom: 30px;
-        }}
+            # Three countdown slides belong to one question.
+            if "_1.png" in image:
+                question_index += 1
+        current_time += SLIDE_DURATION
 
-        .option {{
-            margin: 20px 0;
-            padding: 20px;
-            border-radius: 15px;
-            border: 2px solid #00c3ff;
-            font-size: 30px;
-        }}
+    current_time = 0
+    if correct.exists():
+        for image in images:
+            if Path(image).name.startswith("answer_"):
+                answer = AudioFileClip(str(correct)).set_start(current_time).volumex(0.8)
+                audio_tracks.append(answer)
+            current_time += SLIDE_DURATION
 
-        .correct {{
-            background: #00ff9d;
-            color: black;
-            box-shadow: 0 0 25px #00ff9d;
-            font-weight: bold;
-        }}
-    </style>
-    </head>
+    if not audio_tracks:
+        return video
 
-    <body>
-        <div class="container">
-            <div class="title">✅ Answer</div>
-            {options_html}
-        </div>
-    </body>
-    </html>
-    """
+    return video.set_audio(
+        CompositeAudioClip(audio_tracks).set_duration(video.duration)
+    )
 
 
-# =========================
-# CREATE VIDEO (WITH SOUND)
-# =========================
-def create_video(images, output_file):
+def create_video(images, speech_files, output_file):
+    """Create the final vertical quiz video."""
+    if not images:
+        raise ValueError("No images were generated.")
+
+    clips = [ImageClip(image).set_duration(SLIDE_DURATION) for image in images]
+    video = concatenate_videoclips(clips)
+
     try:
-        print("🎬 Creating video clips...")
-
-        clips = [ImageClip(img).set_duration(DURATION) for img in images]
-        video = concatenate_videoclips(clips)
-
-        print("🎵 Adding audio...")
-
-        audio_clips = []
-
-        # 🎵 Background music
-        if os.path.exists("assets/bg_music.mp3"):
-            bg = AudioFileClip("assets/bg_music.mp3")
-
-            # ✅ LOOP AUDIO TO MATCH VIDEO (FIX)
-            bg = audio_loop(bg, duration=video.duration)
-
-            audio_clips.append(bg.volumex(0.3))
-
-        # ⏳ Tick sound
-        if os.path.exists("assets/tick.mp3"):
-            tick = AudioFileClip("assets/tick.mp3")
-            current_time = 0
-
-            for img in images:
-                if "slide_" in img:
-                    audio_clips.append(tick.set_start(current_time).volumex(0.8))
-                current_time += DURATION
-
-        # ✅ Correct sound
-        if os.path.exists("assets/correct.mp3"):
-            correct = AudioFileClip("assets/correct.mp3")
-            current_time = 0
-
-            for img in images:
-                if "answer_" in img:
-                    audio_clips.append(correct.set_start(current_time).volumex(1.0))
-                current_time += DURATION
-
-        if audio_clips:
-            final_audio = CompositeAudioClip(audio_clips).set_duration(video.duration)
-            video = video.set_audio(final_audio)
-
-        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        video = _add_audio(video, images, speech_files)
+        Path(output_file).parent.mkdir(parents=True, exist_ok=True)
 
         video.write_videofile(
-            output_file,
-            fps=24,
+            str(output_file),
+            fps=FPS,
             codec="libx264",
-            audio_codec="aac"
+            audio_codec="aac",
+            threads=2,
+            logger="bar",
         )
+    finally:
+        video.close()
+        for clip in clips:
+            clip.close()
 
-        print("✅ Video created!")
-
-    except Exception as e:
-        print(f"❌ Error in create_video: {e}")
-        
 
 def get_logo_base64():
-    # ✅ Get current file directory (html_generator.py OR video_service.py)
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-
-    # ✅ Go to project root → then assets
-    logo_path = os.path.join(current_dir, "..", "assets", "logo.png")
-
-    # ✅ Normalize path
-    logo_path = os.path.abspath(logo_path)
-
-    print("📍 Logo path:", logo_path)  # debug (very useful)
-
-    with open(logo_path, "rb") as f:
-        return base64.b64encode(f.read()).decode("utf-8")     
+    logo = ASSETS_DIR / "logo.png"
+    with logo.open("rb") as file:
+        return base64.b64encode(file.read()).decode("utf-8")

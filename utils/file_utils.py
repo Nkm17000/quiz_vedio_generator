@@ -1,6 +1,10 @@
-import os
+from pathlib import Path
 
-def cleanup(files):
-    for f in files:
-        if os.path.exists(f):
-            os.remove(f)
+
+def cleanup(paths):
+    for path in paths:
+        if not path:
+            continue
+        file = Path(path)
+        if file.exists():
+            file.unlink()

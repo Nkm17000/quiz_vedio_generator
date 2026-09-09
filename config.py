@@ -1,48 +1,40 @@
 import os
+from pathlib import Path
+
 import imgkit
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# =========================
-# ENV VARIABLES
-# =========================
+BASE_DIR = Path(__file__).resolve().parent
 
-# 🔐 AI API
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-# 🎥 Video Config
-"""VIDEO_WIDTH = int(os.getenv("VIDEO_WIDTH", 1920))
-VIDEO_HEIGHT = int(os.getenv("VIDEO_HEIGHT", 1080))
-DURATION = int(os.getenv("VIDEO_DURATION", 3))"""
-
+# Video
 VIDEO_WIDTH = 1080
-VIDEO_HEIGHT = 1920   # 🔥 vertical reels
-DURATION = 3    
+VIDEO_HEIGHT = 1920
+SLIDE_DURATION = 3
+FPS = 24
 
-MODEL = os.getenv("MODEL", "llama-3.3-70b-versatile")
+# Paths
+ASSETS_DIR = BASE_DIR / "assets"
+QUIZ_DIR = ASSETS_DIR / "quiz_data"
+OUTPUT_DIR = BASE_DIR / "output"
+OUTPUT_VIDEO = OUTPUT_DIR / "quiz_video.mp4"
+TEMP_DIR = OUTPUT_DIR / "temp"
 
-# 🖼️ Image Config
+# Rendering
 WKHTML_PATH = os.getenv("WKHTMLTOIMAGE_PATH", "/usr/bin/wkhtmltoimage")
-IMGKIT_CONFIG = imgkit.config(wkhtmltoimage=WKHTML_PATH)
+try:
+    IMGKIT_CONFIG = imgkit.config(wkhtmltoimage=WKHTML_PATH)
+except Exception:
+    IMGKIT_CONFIG = None
 
-# 🌐 API URL
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+# Voice: Indian English only.
+# Female: en-IN-NeerjaNeural
+# Male:   en-IN-PrabhatNeural
+TTS_VOICE = os.getenv("TTS_VOICE", "en-IN-NeerjaNeural")
+TTS_RATE = os.getenv("TTS_RATE", "+10%")
+TTS_VOLUME = os.getenv("TTS_VOLUME", "+0%")
 
-# 📁 Output
-OUTPUT_DIR = "output"
-OUTPUT_VIDEO = f"{OUTPUT_DIR}/quiz_video.mp4"
-
-# =========================
-# 📘 FACEBOOK CONFIG (NEW)
-# =========================
-
+# Facebook
 FACEBOOK_PAGE_ID = os.getenv("FACEBOOK_PAGE_ID")
 FACEBOOK_ACCESS_TOKEN = os.getenv("FACEBOOK_ACCESS_TOKEN")
-
-# ✅ Optional safety check 
-if not FACEBOOK_ACCESS_TOKEN:
-    print("⚠️ WARNING: FACEBOOK_ACCESS_TOKEN is not set")
-
-if not FACEBOOK_PAGE_ID:
-    print("⚠️ WARNING: FACEBOOK_PAGE_ID is not set")

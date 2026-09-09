@@ -1,29 +1,28 @@
-from config import FACEBOOK_PAGE_ID, FACEBOOK_ACCESS_TOKEN
 import requests
 
-def upload_video_to_facebook(video_path, caption="Daily Quiz 🎯"):
+from config import FACEBOOK_ACCESS_TOKEN, FACEBOOK_PAGE_ID
 
+
+def upload_video_to_facebook(video_path, caption="Daily Quiz 🎯"):
     if not FACEBOOK_ACCESS_TOKEN:
-        raise ValueError("❌ FACEBOOK_ACCESS_TOKEN missing")
-    
+        raise ValueError("FACEBOOK_ACCESS_TOKEN is missing.")
+    if not FACEBOOK_PAGE_ID:
+        raise ValueError("FACEBOOK_PAGE_ID is missing.")
 
     url = f"https://graph-video.facebook.com/v19.0/{FACEBOOK_PAGE_ID}/videos"
 
-    files = {
-        "source": open(video_path, "rb")
-    }
+    with open(video_path, "rb") as video_file:
+        response = requests.post(
+            url,
+            files={"source": video_file},
+            data={
+                "description": caption,
+                "access_token": FACEBOOK_ACCESS_TOKEN,
+            },
+            timeout=300,
+        )
 
-    data = {
-        "description": caption,
-        "access_token": FACEBOOK_ACCESS_TOKEN
-    }
-
-    response = requests.post(url, files=files, data=data)
-
-    try:
-        result = response.json()
-        print("📤 Facebook Upload Response:", result)
-        return result
-    except Exception:
-        print("❌ Upload failed:", response.text)
-        return None
+    response.raise_for_status()
+    result = response.json()
+    print("📤 Facebook upload:", result)
+    return result

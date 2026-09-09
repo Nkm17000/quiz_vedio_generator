@@ -6,12 +6,11 @@ on:
       - main
   workflow_dispatch:
   schedule:
-    - cron: "0 * * * *"   # every 1 hour
+    - cron: "*/15 * * * *"   # every 15 minutes
 
 permissions:
   contents: write
 
-# ✅ Prevent parallel memory corruption
 concurrency:
   group: quiz-history
   cancel-in-progress: false
@@ -19,32 +18,23 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     steps:
       # =========================
       # 📥 Checkout
       # =========================
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # =========================
       # ⚡ Cache pip
       # =========================
       - name: Cache pip
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-
-      # =========================
-      # 🤖 Cache HF models (IMPORTANT)
-      # =========================
-      - name: Cache HuggingFace
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/huggingface
-          key: hf-cache
 
       # =========================
       # 🧱 System deps
@@ -74,44 +64,25 @@ jobs:
       # 🐍 Python
       # =========================
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       # =========================
-      # 📦 Install deps
+      # 📦 Install deps (LIGHT)
       # =========================
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      # =========================
-      # 🔐 HF Token (optional fix)
-      # =========================
-      - name: Set HF Token
-        run: echo "HF_TOKEN=${{ secrets.HF_TOKEN }}" >> $GITHUB_ENV
 
       # =========================
       # 🧠 Prepare memory
       # =========================
-      - name: Prepare memory folder
+      - name: Prepare memory
         run: |
           mkdir -p data/history
           if [ ! -f data/history/history.json ]; then
-            echo '{"questions": []}' > data/history/history.json
-          fi
-
-      # =========================
-      # 🧹 Fix FAISS corruption
-      # =========================
-      - name: Clean FAISS index
-        run: |
-          if [ -f data/history/vectors.index ]; then
-            if [ ! -s data/history/vectors.index ]; then
-              echo "Deleting corrupted FAISS index"
-              rm data/history/vectors.index
-            fi
+            echo '{"counter": 0}' > data/history/history.json
           fi
 
       # =========================
@@ -126,29 +97,21 @@ jobs:
       - name: Run Quiz Generator
         run: python app.py
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
           FACEBOOK_ACCESS_TOKEN: ${{ secrets.FACEBOOK_ACCESS_TOKEN }}
 
       # =========================
-      # 🔍 Debug
+      # 💾 Commit memory (SAFE)
       # =========================
-      - name: List generated files
-        run: ls -R
-
-      # =========================
-      # 💾 Commit memory (FIXED)
-      # =========================
-      - name: Commit quiz memory (SAFE)
+      - name: Commit quiz memory
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "actions@github.com"
 
           git add data/history/
 
-          git commit -m "Update quiz memory" || echo "No changes"
+          git commit -m "Update quiz counter" || echo "No changes"
 
-          # ✅ FIX: pull + retry
           for i in 1 2 3
           do
             git pull --rebase origin main && git push origin main && break
@@ -157,9 +120,9 @@ jobs:
           done
 
       # =========================
-      # 📤 Upload video
+      # 📤 Upload video artifact
       # =========================
-      - name: Upload video artifact
+      - name: Upload video
         uses: actions/upload-artifact@v4
         with:
           name: quiz-video

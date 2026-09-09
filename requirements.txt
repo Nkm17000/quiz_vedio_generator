@@ -1,12 +1,7 @@
-moviepy==1.0.3
-imgkit
-imageio
-imageio-ffmpeg
-numpy
-Pillow
-requests
 fastapi
-uvicorn
+imgkit
+moviepy==1.0.3
 python-dotenv
-faiss-cpu
-sentence-transformers
+requests
+edge-tts
+uvicorn
