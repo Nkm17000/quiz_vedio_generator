@@ -74,19 +74,18 @@ def _add_audio(video, images, speech_files):
             audio_tracks.append(tick_clip)
         current_time += SLIDE_DURATION
 
-    # One question voice track is reused for all three countdown slides.
+    # Speak each question exactly once, at the start of its first countdown slide.
+    # A question owns three countdown slides, but its voice track must not repeat.
     current_time = 0
     question_index = 0
     for image in images:
-        if Path(image).name.startswith("slide_"):
-            speech = speech_files[question_index]
+        filename = Path(image).name
+        if filename.startswith("slide_") and filename.endswith(f"_{SLIDE_DURATION}.png"):
+            speech = speech_files[question_index] if question_index < len(speech_files) else None
             if speech:
                 voice = AudioFileClip(speech).set_start(current_time).volumex(1.0)
                 audio_tracks.append(voice)
-
-            # Three countdown slides belong to one question.
-            if "_1.png" in image:
-                question_index += 1
+            question_index += 1
         current_time += SLIDE_DURATION
 
     current_time = 0
