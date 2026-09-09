@@ -1,6 +1,16 @@
 # Quiz Video Generator
 
-Generates vertical quiz videos with a 3-second countdown, English + Hindi text, natural Indian-English question narration, background music, countdown ticks, answer sound, and optional Facebook upload.
+Generates vertical quiz videos with a 3-second countdown, bilingual English + Hindi text, natural Indian-English question narration, background music, countdown ticks, answer sound, and optional Facebook upload.
+
+## Hindi / Devanagari rendering
+
+- The project includes `assets/fonts/NotoSansDevanagari-Regular.ttf`.
+- Hindi text always uses the bundled Devanagari font first; it never falls back to a Latin-only font.
+- Pillow RAQM shaping is used when available so Devanagari combining marks render correctly.
+- English and Hindi explanation text are rendered separately with the correct script font.
+- The renderer dynamically fits long questions and explanations so text does not overlap the timer, options, or screen edges.
+- Unsupported emoji that could become tofu/square boxes are replaced with plain text labels.
+- DejaVu Sans and DejaVu Sans Bold are also bundled so English rendering is independent of runner fonts.
 
 ## Voice behavior
 
@@ -9,14 +19,15 @@ Generates vertical quiz videos with a 3-second countdown, English + Hindi text, 
 - Only the English question is narrated.
 - Each question is narrated exactly once, at the start of its first countdown slide.
 - The narration uses normal human speaking speed and follows the question length.
-- A short question may finish quickly; a longer question is allowed to use more of the countdown time instead of being forced into one second.
+- A longer question may continue naturally beyond one 3-second slide; it is never artificially accelerated to force it into one second.
 - The narration is never repeated on the second/third countdown slide and options are never spoken.
 - `TTS_RATE=+0%` is the default natural rate.
-- FFmpeg is bundled through `imageio-ffmpeg`, so GitHub Actions does not depend on a system-level FFmpeg installation.
 
 ## Performance
 
-The video pipeline uses Pillow for local slide rendering and FFmpeg directly for slideshow encoding and audio mixing. This removes the wkhtmltoimage/imgkit rendering dependency and avoids MoviePy's frame-by-frame encoding overhead.
+The video pipeline uses Pillow for slide rendering and FFmpeg directly for slideshow encoding and audio mixing. This removes the wkhtmltoimage/imgkit rendering dependency and avoids MoviePy's frame-by-frame encoding overhead.
+
+FFmpeg is supplied by `imageio-ffmpeg`, so GitHub Actions does not depend on a system-level FFmpeg installation.
 
 GitHub Actions caches both pip downloads and the complete Python virtual environment. Dependencies are installed only when `requirements.txt` changes or the cache is unavailable.
 
@@ -27,5 +38,3 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python app.py
 ```
-
-FFmpeg is supplied by the `imageio-ffmpeg` Python package.
