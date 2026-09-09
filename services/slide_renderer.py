@@ -5,13 +5,13 @@ from config import ASSETS_DIR, VIDEO_HEIGHT, VIDEO_WIDTH
 
 FONT_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-FONT_HINDI = "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf"
+FONT_HINDI = str(ASSETS_DIR / "fonts" / "NotoSansDevanagari-Regular.ttf")
 
 
 def _font(size, bold=False, hindi=False):
     candidates = []
     if hindi:
-        candidates += [FONT_HINDI, "/usr/share/fonts/opentype/noto/NotoSansDevanagari-Regular.ttf"]
+        candidates += [FONT_HINDI, "/usr/share/fonts/opentype/noto/NotoSansDevanagari-Regular.ttf", "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf"]
     candidates += [FONT_BOLD if bold else FONT_REGULAR]
     for path in candidates:
         if Path(path).exists():
