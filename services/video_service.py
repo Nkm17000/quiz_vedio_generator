@@ -2,9 +2,13 @@ import base64
 import subprocess
 from pathlib import Path
 
+import imageio_ffmpeg
+
 from config import ASSETS_DIR, FPS, SLIDE_DURATION, TEMP_DIR, VIDEO_HEIGHT, VIDEO_WIDTH
 from services.slide_renderer import render_answer, render_question
 from services.tts_service import generate_question_speech
+
+FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 
 
 def generate_assets(quiz):
@@ -27,7 +31,7 @@ def generate_assets(quiz):
 
 
 def _run(command):
-    subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
 
 
 def _write_concat_file(images):
@@ -125,7 +129,7 @@ def _build_audio(images, speech_files, output_audio):
         f"atrim=duration={total_duration},asetpts=N/SR/TB[aout]"
     )
 
-    command = ["ffmpeg", "-y", *inputs, "-filter_complex", ";".join(filters), "-map", "[aout]", "-c:a", "aac", "-b:a", "128k", str(output_audio)]
+    command = [FFMPEG, "-y", *inputs, "-filter_complex", ";".join(filters), "-map", "[aout]", "-c:a", "aac", "-b:a", "128k", str(output_audio)]
     _run(command)
 
 
@@ -144,7 +148,7 @@ def create_video(images, speech_files, output_file):
 
     # FFmpeg is considerably faster than MoviePy for a slideshow of static images.
     _run([
-        "ffmpeg", "-y",
+        FFMPEG, "-y",
         "-f", "concat", "-safe", "0", "-i", str(concat_file),
         "-vf", f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:force_original_aspect_ratio=decrease,pad={VIDEO_WIDTH}:{VIDEO_HEIGHT}:(ow-iw)/2:(oh-ih)/2,fps={FPS},format=yuv420p",
         "-c:v", "libx264",
@@ -156,7 +160,7 @@ def create_video(images, speech_files, output_file):
     ])
 
     _run([
-        "ffmpeg", "-y",
+        FFMPEG, "-y",
         "-i", str(silent_video),
         "-i", str(audio_file),
         "-c:v", "copy",

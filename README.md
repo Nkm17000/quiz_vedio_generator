@@ -8,8 +8,11 @@ Generates vertical quiz videos with a 3-second countdown, English + Hindi text, 
 - Male option: `en-IN-PrabhatNeural`
 - Only the English question is narrated.
 - Each question is narrated exactly once, at the start of its first countdown slide.
-- The narration keeps a natural speaking speed. It is **not** squeezed into one second and is not artificially accelerated to fit a slide.
+- The narration uses normal human speaking speed and follows the question length.
+- A short question may finish quickly; a longer question is allowed to use more of the countdown time instead of being forced into one second.
+- The narration is never repeated on the second/third countdown slide and options are never spoken.
 - `TTS_RATE=+0%` is the default natural rate.
+- FFmpeg is bundled through `imageio-ffmpeg`, so GitHub Actions does not depend on a system-level FFmpeg installation.
 
 ## Performance
 
@@ -25,4 +28,4 @@ python -m venv .venv
 .venv/bin/python app.py
 ```
 
-FFmpeg must be available on the system.
+FFmpeg is supplied by the `imageio-ffmpeg` Python package.

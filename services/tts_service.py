@@ -31,10 +31,12 @@ async def _synthesize(text, output_file):
 
 
 def generate_question_speech(quiz):
-    """Generate exactly one natural Indian-English track per question.
+    """Generate one natural Indian-English track per question.
 
-    Audio is not squeezed into one second or artificially sped up. The video
-    starts each track once at the beginning of that question's countdown.
+    The narration is generated at normal human speaking speed. Its duration is
+    allowed to follow the length of the question instead of being compressed
+    into a fixed one-second window. The video starts it once at the beginning
+    of the question countdown and lets it continue naturally if needed.
     """
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
     speech_files = []
